@@ -1,0 +1,6 @@
+apiVersion: cw.com/v1
+kind: ApiGateway
+metadata:
+  name: christians-apigateway
+spec:
+  cwproperty: dude
