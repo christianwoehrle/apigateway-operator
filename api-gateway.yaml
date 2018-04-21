@@ -3,4 +3,14 @@ kind: ApiGateway
 metadata:
   name: christians-apigateway
 spec:
-  cwproperty: dude
+  serviceLabel: labelOfServicesThatHAveTobeAddedToIngress
+  backend:
+    serviceName: lumpensammler
+    servicePort: 8080
+  rules:
+  - http:
+      paths:
+      - path: /ausschluss
+        backend:
+          serviceName: ausschluss-service
+          servicePort: 10001
