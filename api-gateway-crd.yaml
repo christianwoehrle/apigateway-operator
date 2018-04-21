@@ -10,3 +10,10 @@ spec:
     kind: ApiGateway
     singular: apigateway
     plural: apigateways
+  validation:
+    openAPIV3Schema:
+      properties:
+        spec:
+          properties:
+            serviceLabel:
+              type: string
