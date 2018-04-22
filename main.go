@@ -5,18 +5,91 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
-	"k8s.io/apimachinery/pkg/api/errors"
+	"encoding/json"
+	"io"
+	"log"
+	"net/http"
+
+	cwv1 "github.com/christianwoehrle/apigateway-operator/pkg/v1"
+
+	"k8s.io/api/core/v1"
+	"k8s.io/api/extensions/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
-	// Uncomment the following line to load the gcp plugin (only required to authenticate against GKE clusters).
-	// _ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
-	//"github.com/kubernetes/kubernetes/pkg/apis/core/pods"
 )
 
+type ApiGateways struct {
+	apigateways map[string]*ApiGateway
+}
+
+type ApiGateway struct {
+	apigatewayCRD cwv1.ApiGateway
+	services      map[string]Service
+	ingress       v1beta1.Ingress
+}
+
+type Service struct {
+	path        string
+	serviceName string
+	servicePort int
+}
+
+var apigateways = ApiGateways{
+	apigateways: make(map[string]*ApiGateway),
+}
+
+func (*ApiGateways) AddGateway(gw cwv1.ApiGateway, clientset *kubernetes.Clientset) {
+	fmt.Println("*ApiGateways --> AddGateway: ", gw)
+
+	apiGateway := ApiGateway{
+		apigatewayCRD: gw,
+	}
+
+	apigateways.apigateways[gw.Metadata.Name] = &apiGateway
+
+	ingressName := gw.Metadata.Name + "Ingress"
+	createIngress(ingressName, clientset)
+
+}
+func (*ApiGateways) DeleteGateway(gw cwv1.ApiGateway, clientset *kubernetes.Clientset) {
+	fmt.Println("*ApiGateways --> DeleteGateway: ", gw)
+
+}
+
+/** AddNewService added the service to the ingress controllers, that want to handle request for that service
+  i.e. these ingresses, for which the ApiGateway has a matching serviceLabel
+*/
+func (*ApiGateways) AddNewService(service *v1.Service) {
+	fmt.Println("Service added: ", service.Name)
+
+}
+
+func createIngress(gwName string, clientset *kubernetes.Clientset) {
+	fmt.Println("createIngress")
+	ingresses, err := clientset.ExtensionsV1beta1().Ingresses("default").List(metav1.ListOptions{})
+	handleErr("Couldn't read ingresses", err)
+	fmt.Println("# ingresses: ", ingresses.Size())
+
+	for i, ns := range ingresses.Items {
+		fmt.Printf("Ingress %d: %s\n", i, ns)
+	}
+
+	newIngress := v1beta1.Ingress{Spec: v1beta1.IngressSpec{}}
+	newIngress.SetName(gwName)
+
+	//TODO: Remove defaults
+	newIngress.Spec.Backend = &v1beta1.IngressBackend{ServiceName: "test", ServicePort: 80}
+	ingress, err := clientset.ExtensionsV1beta1().Ingresses("default").Create(&newIngress)
+
+	if err != nil {
+		handleErr("Ingress not created:"+ingress.String(), err)
+	}
+}
+
 func main() {
+	fmt.Println("starthhhh")
 	var kubeconfig *string
 	if home := homeDir(); home != "" {
 		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
@@ -36,48 +109,8 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
-	for {
-		service, err := clientset.CoreV1().Services("").Watch(metav1.ListOptions{})
-		if err != nil {
-			panic(err.Error())
-		}
-		fmt.Printf("%v\n", (service))
-
-		pods, err := clientset.CoreV1().Pods("").List(metav1.ListOptions{})
-		if err != nil {
-			panic(err.Error())
-		}
-		fmt.Printf("There are %d pods in the cluster\n", len(pods.Items))
-
-		namespaces, err := clientset.CoreV1().Namespaces().List(metav1.ListOptions{})
-
-		for i, ns := range namespaces.Items {
-			fmt.Printf("Namespace %d: %s\n", i, ns)
-		}
-		podlist, err := clientset.CoreV1().Pods("").List(metav1.ListOptions{})
-
-		for i, pod := range podlist.Items {
-			fmt.Printf("%d \t--> NS: %v, \tName: %s, \tLabels: %v \tNode: %#v\n", i, pod.Namespace, pod.Name, pod.Labels, pod.Spec.NodeName)
-		}
-		// Examples for error handling:
-		// - Use helper functions like e.g. errors.IsNotFound()
-		// - And/or cast to StatusError and use its properties like e.g. ErrStatus.Message
-		namespace := "kube-system"
-		pod := "kube-apiserver-docker-for-desktop"
-		_, err = clientset.CoreV1().Pods(namespace).Get(pod, metav1.GetOptions{})
-		if errors.IsNotFound(err) {
-			fmt.Printf("Pod %s in namespace %s not found\n", pod, namespace)
-		} else if statusError, isStatus := err.(*errors.StatusError); isStatus {
-			fmt.Printf("Error getting pod %s in namespace %s: %v\n",
-				pod, namespace, statusError.ErrStatus.Message)
-		} else if err != nil {
-			panic(err.Error())
-		} else {
-			fmt.Printf("Found pod %s in namespace %s\n", pod, namespace)
-		}
-
-		time.Sleep(10 * time.Second)
-	}
+	go handleServiceEvents(clientset)
+	handleApiGatewayEvents(clientset)
 }
 
 func homeDir() string {
@@ -85,4 +118,68 @@ func homeDir() string {
 		return h
 	}
 	return os.Getenv("USERPROFILE") // windows
+}
+
+func handleServiceEvents(clientset *kubernetes.Clientset) {
+	for {
+		serviceStreamWatcher, err := clientset.CoreV1().Services("").Watch(metav1.ListOptions{})
+		if err != nil {
+			panic(err.Error())
+		}
+		//fmt.Printf("%T\n", serviceStreamWatcher)
+		for {
+			select {
+			case event := <-serviceStreamWatcher.ResultChan():
+				fmt.Printf("%T\n", event)
+				fmt.Printf("%V\n", event)
+				fmt.Printf("%T\n", event.Object)
+				service := event.Object.(*v1.Service)
+
+				fmt.Printf("Labels %V \n", service.Labels)
+				fmt.Printf("%V: \n\n", event.Type)
+				for key, value := range service.Labels {
+					fmt.Printf("Key, VAlue: %s %s\n", key, value)
+				}
+				apigateways.AddNewService(service)
+			}
+
+		}
+	}
+}
+
+func handleApiGatewayEvents(clientset *kubernetes.Clientset) {
+
+	resp, err := http.Get("http://localhost:8001/apis/cw.com/v1/apigateways?watch=true")
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	handleApiGatewayEvent(resp, clientset)
+}
+
+func handleApiGatewayEvent(resp *http.Response, clientset *kubernetes.Clientset) {
+	decoder := json.NewDecoder(resp.Body)
+	for {
+		var event cwv1.ApiGatewayWatchEvent
+		if err := decoder.Decode(&event); err == io.EOF {
+			fmt.Println("handleNewApiGateways EOF")
+			break
+		} else if err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("Received watch event: %s: %s: \n", event.Type, event.Object.Metadata.Name)
+
+		if event.Type == "ADDED" {
+			apigateways.AddGateway(event.Object, clientset)
+		} else if event.Type == "DELETED" {
+			apigateways.DeleteGateway(event.Object, clientset)
+		}
+	}
+}
+
+func handleErr(text string, err error) {
+	if err != nil {
+		fmt.Printf("%s: %v\n", text, err)
+		os.Exit(1)
+	}
 }

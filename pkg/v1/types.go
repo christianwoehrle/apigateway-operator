@@ -1,7 +1,7 @@
 package v1
 
 type Metadata struct {
-	Name string
+	Name      string
 	Namespace string
 }
 
@@ -11,10 +11,10 @@ type ApiGatewaySpec struct {
 
 type ApiGateway struct {
 	Metadata Metadata
-	Spec ApiGatewaySpec
+	Spec     ApiGatewaySpec
 }
 
 type ApiGatewayWatchEvent struct {
-	Type string
+	Type   string
 	Object ApiGateway
 }
