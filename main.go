@@ -16,6 +16,7 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/api/extensions/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -77,10 +78,10 @@ func createIngress(gwName string, clientset *kubernetes.Clientset) {
 	}
 
 	newIngress := v1beta1.Ingress{Spec: v1beta1.IngressSpec{}}
-	newIngress.SetName(gwName)
+	newIngress.SetName("testingress")
 
 	//TODO: Remove defaults
-	newIngress.Spec.Backend = &v1beta1.IngressBackend{ServiceName: "test", ServicePort: 80}
+	newIngress.Spec.Backend = &v1beta1.IngressBackend{ServiceName: "my-service", ServicePort: intstr.IntOrString{IntVal: 80}}
 	ingress, err := clientset.ExtensionsV1beta1().Ingresses("default").Create(&newIngress)
 
 	if err != nil {
