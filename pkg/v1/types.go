@@ -1,5 +1,12 @@
 package v1
 
+import "k8s.io/apimachinery/pkg/util/intstr"
+
+type Backend struct {
+	ServiceName string
+	ServicePort intstr.IntOrString
+}
+
 type Metadata struct {
 	Name      string
 	Namespace string
@@ -7,6 +14,7 @@ type Metadata struct {
 
 type ApiGatewaySpec struct {
 	ServiceLabel string
+	Backend      Backend
 }
 
 type ApiGateway struct {

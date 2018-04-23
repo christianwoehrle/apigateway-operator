@@ -16,7 +16,6 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/api/extensions/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -50,47 +49,69 @@ func (*ApiGateways) AddGateway(gw cwv1.ApiGateway, clientset *kubernetes.Clients
 
 	apigateways.apigateways[gw.Metadata.Name] = &apiGateway
 
-	ingressName := gw.Metadata.Name + "Ingress"
-	createIngress(ingressName, clientset)
+	createIngress(gw, clientset)
 
 }
 func (*ApiGateways) DeleteGateway(gw cwv1.ApiGateway, clientset *kubernetes.Clientset) {
-	fmt.Println("*ApiGateways --> DeleteGateway: ", gw)
+	fmt.Println("*ApiGateways --> DeleteGateway, needs implementation: ", gw)
+
+}
+func (*ApiGateways) ModifyGateway(gw cwv1.ApiGateway, clientset *kubernetes.Clientset) {
+	fmt.Println("*ApiGateways --> ModifyGateway, needs implementation: ", gw)
 
 }
 
-/** AddNewService added the service to the ingress controllers, that want to handle request for that service
+/** AddNewService adds the service to the ingress controllers, that want to handle request for that service
   i.e. these ingresses, for which the ApiGateway has a matching serviceLabel
 */
 func (*ApiGateways) AddNewService(service *v1.Service) {
-	fmt.Println("Service added: ", service.Name)
+	fmt.Println("Service added (mock): ", service.Name)
 
 }
 
-func createIngress(gwName string, clientset *kubernetes.Clientset) {
-	fmt.Println("createIngress")
+/** DeleteService deletes the service to the ingress controllers, that want to handle request for that service
+  i.e. these ingresses, for which the ApiGateway has a matching serviceLabel
+*/
+func (*ApiGateways) DeleteService(service *v1.Service) {
+	fmt.Println("Service deleted (mock): ", service.Name)
+
+}
+
+/** createIngress adds the Ingress for an ApiGateway
+ */
+func createIngress(gw cwv1.ApiGateway, clientset *kubernetes.Clientset) {
+
+	ingressName := gw.Metadata.Name + "-ingress"
+
+	// Check if INgress already exists
+	ingress, err := clientset.ExtensionsV1beta1().Ingresses("default").Get(ingressName, metav1.GetOptions{})
+	if ingress != nil {
+		fmt.Println("Ingress already exists, do nothing now (Implementation needed)")
+		return
+	}
+
+	fmt.Println("add Ingress: ", ingressName)
 	ingresses, err := clientset.ExtensionsV1beta1().Ingresses("default").List(metav1.ListOptions{})
 	handleErr("Couldn't read ingresses", err)
-	fmt.Println("# ingresses: ", ingresses.Size())
 
-	for i, ns := range ingresses.Items {
-		fmt.Printf("Ingress %d: %s\n", i, ns)
+	for i, ingress := range ingresses.Items {
+		fmt.Printf("Ingress %d: %s\n", i, ingress.Name)
 	}
 
 	newIngress := v1beta1.Ingress{Spec: v1beta1.IngressSpec{}}
-	newIngress.SetName("testingress")
+	newIngress.SetName(ingressName)
 
-	//TODO: Remove defaults
-	newIngress.Spec.Backend = &v1beta1.IngressBackend{ServiceName: "my-service", ServicePort: intstr.IntOrString{IntVal: 80}}
-	ingress, err := clientset.ExtensionsV1beta1().Ingresses("default").Create(&newIngress)
+	//TODO: Add Services
+	newIngress.Spec.Backend = &v1beta1.IngressBackend{ServiceName: gw.Spec.Backend.ServiceName, ServicePort: gw.Spec.Backend.ServicePort}
+	createdIngress, err := clientset.ExtensionsV1beta1().Ingresses("default").Create(&newIngress)
 
 	if err != nil {
-		handleErr("Ingress not created:"+ingress.String(), err)
+		handleErr("Ingress not created:"+createdIngress.String(), err)
 	}
+	fmt.Println("Ingress added")
 }
 
 func main() {
-	fmt.Println("starthhhh")
 	var kubeconfig *string
 	if home := homeDir(); home != "" {
 		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
@@ -131,17 +152,17 @@ func handleServiceEvents(clientset *kubernetes.Clientset) {
 		for {
 			select {
 			case event := <-serviceStreamWatcher.ResultChan():
-				fmt.Printf("%T\n", event)
-				fmt.Printf("%V\n", event)
-				fmt.Printf("%T\n", event.Object)
 				service := event.Object.(*v1.Service)
-
 				fmt.Printf("Labels %V \n", service.Labels)
-				fmt.Printf("%V: \n\n", event.Type)
 				for key, value := range service.Labels {
-					fmt.Printf("Key, VAlue: %s %s\n", key, value)
+					fmt.Printf("Key, Value: %s %s\n", key, value)
 				}
-				apigateways.AddNewService(service)
+				if event.Type == "ADDED" {
+					apigateways.AddNewService(service)
+				}
+				if event.Type == "DELETED" {
+					apigateways.DeleteService(service)
+				}
 			}
 
 		}
@@ -164,16 +185,19 @@ func handleApiGatewayEvent(resp *http.Response, clientset *kubernetes.Clientset)
 		var event cwv1.ApiGatewayWatchEvent
 		if err := decoder.Decode(&event); err == io.EOF {
 			fmt.Println("handleNewApiGateways EOF")
-			break
+			continue
 		} else if err != nil {
 			log.Fatal(err)
 		}
 		log.Printf("Received watch event: %s: %s: \n", event.Type, event.Object.Metadata.Name)
 
-		if event.Type == "ADDED" {
+		switch event.Type {
+		case "ADDED":
 			apigateways.AddGateway(event.Object, clientset)
-		} else if event.Type == "DELETED" {
+		case "DELETED":
 			apigateways.DeleteGateway(event.Object, clientset)
+		case "MODIFIED":
+			apigateways.ModifyGateway(event.Object, clientset)
 		}
 	}
 }
