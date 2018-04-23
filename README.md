@@ -1,7 +1,10 @@
 # apigateway-operator
+
+**!!WIP!!**
+
 kubernetes operator that dynamically adds services to an ingress resource
 
-!!WIP
+
 
 This project defines a CustomResourceDefinition ApiGateway and an Operator that brings this CRD to life.
 
