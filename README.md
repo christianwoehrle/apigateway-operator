@@ -3,8 +3,10 @@ kubernetes operator that dynamically adds services to an ingress resource
 
 !!WIP
 
-The Apigateway Controller creates an Ingress for every apigateway.
-The ingress controller handles traffic for every service, that has a label with then same name "XY" as specified
+This project defines a CustomResourceDefinition ApiGateway and an Operator that brings this CRD to life.
+
+The Apigateway Operator creates an Ingress for every apigateway.
+The ingress handles traffic for every service, that has a label with then same name "XY" as specified
 in the ApiGateways attribute ServiceLabel.
 
 
