@@ -5,7 +5,11 @@ kubernetes operator that dynamically adds services to an ingress resource
 
 The Apigateway Controller creates Ingress Resources that handle traffic for services with specific labels.
 
-The operator checks if services are started, stopped and adds these services to the ingress resources, that this operater is responsible for.
+The ApiGateway specifies a ServiceLabel that has to be set in the srvices, that want to be accessiable via the ApiGateway/Ingress Controller
+
+The operator checks if services are started with the sepcified Label and addes the Service to the Ingress Controller with the path being the value of the service label.
+
+
 
 
 ## Custom Resource Defintion
@@ -29,3 +33,5 @@ kubectl get ApiGateway
 kubectl describe ApiGateway apigateway
 
 kubectl delete apigateway apigateway
+
+
