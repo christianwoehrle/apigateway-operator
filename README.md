@@ -86,7 +86,7 @@ Check the new  crd is installed:
 kubectl get crd
 ```
 
-Add the first api-gateway and delete it again
+Just to try it: create the first api-gateway, check that it is there and delete it again
 ```
 kubectl apply -f api-gateway.yaml
 
@@ -94,6 +94,6 @@ kubectl get ApiGateway
 
 kubectl describe ApiGateway apigateway
 
-kubectl delete apigateway apigateway
+# kubectl delete apigateway apigateway
 ```
 
