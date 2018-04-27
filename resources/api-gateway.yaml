@@ -1,10 +1,10 @@
-apiVersion: cw.com/v1
+apiVersion: cw.com/v1alpha
 kind: ApiGateway
 metadata:
   name: christians-apigateway2
 spec:
   serviceLabel: labelOfServicesThatHAveTobeAddedToIngress
-  host: cw.de
+  host: dude.de
   backend:
     serviceName: lumpensammler
     servicePort: 8080
