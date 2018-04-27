@@ -1,4 +1,4 @@
-package v1
+package v1alpha
 
 import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -11,7 +11,7 @@ type Backend struct {
 }
 
 type ApiGatewaySpec struct {
-	ServiceLabel string
+	ServiceLabel string `json:"serviceLabel"`
 	Host         string
 	Backend      Backend
 }
@@ -27,7 +27,16 @@ type ApiGateway struct {
 	Spec          ApiGatewaySpec `json:"spec"`
 }
 
-type ApiGatewayWatchEvent struct {
-	Type   string
-	Object ApiGateway
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+type ApiGatewayList struct {
+	v1.TypeMeta   `json:",inline"`
+	v1.ObjectMeta `json:"metadata,omitempty"`
+
+	Items []ApiGateway `json:"items"`
 }
+
+//type ApiGatewayWatchEvent struct {
+//	Type   string
+//	Object ApiGateway
+//}

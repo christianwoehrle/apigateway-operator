@@ -6,17 +6,14 @@ import (
 	"os"
 	"path/filepath"
 
-	"encoding/json"
-	"io"
-	"log"
-	"net/http"
-
-	cwv1 "github.com/christianwoehrle/apigateway-operator/pkg/apis/apigateway/v1"
+	"github.com/christianwoehrle/apigateway-operator/pkg/apis/apigateway/v1alpha"
+	cwclientset "github.com/christianwoehrle/apigateway-operator/pkg/generated/clientset/versioned/typed/apigateway/v1alpha"
 
 	"time"
 
 	"k8s.io/api/core/v1"
 	"k8s.io/api/extensions/v1beta1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
@@ -28,7 +25,7 @@ type ApiGateways struct {
 }
 
 type ApiGateway struct {
-	apigatewayCRD cwv1.ApiGateway
+	apigatewayCRD v1alpha.ApiGateway
 	services      map[string]Service
 	ingress       *v1beta1.Ingress
 }
@@ -43,25 +40,25 @@ var apigateways = ApiGateways{
 	apigateways: make(map[string]*ApiGateway),
 }
 
-func (*ApiGateways) AddGateway(gw cwv1.ApiGateway, clientset *kubernetes.Clientset) {
+func (*ApiGateways) AddGateway(gw *v1alpha.ApiGateway, clientset *kubernetes.Clientset) {
 	fmt.Println("*ApiGateways --> AddGateway: ", gw)
 
 	apiGateway := ApiGateway{
-		apigatewayCRD: gw,
+		apigatewayCRD: *gw,
 	}
 
 	apigateways.apigateways[gw.Name] = &apiGateway
 
-	ingress := createIngress(gw, clientset)
+	ingress := createIngress(*gw, clientset)
 	if ingress != nil {
 		apiGateway.ingress = ingress
 	}
 }
-func (*ApiGateways) DeleteGateway(gw cwv1.ApiGateway, clientset *kubernetes.Clientset) {
+func (*ApiGateways) DeleteGateway(gw *v1alpha.ApiGateway, clientset *kubernetes.Clientset) {
 	fmt.Println("*ApiGateways --> DeleteGateway, needs implementation: ", gw)
 
 }
-func (*ApiGateways) ModifyGateway(gw cwv1.ApiGateway, clientset *kubernetes.Clientset) {
+func (*ApiGateways) ModifyGateway(gw *v1alpha.ApiGateway, clientset *kubernetes.Clientset) {
 	fmt.Println("*ApiGateways --> ModifyGateway, needs implementation: ", gw)
 
 }
@@ -130,7 +127,7 @@ func (*ApiGateways) ModifyService(service *v1.Service, clientset *kubernetes.Cli
 
 /** createIngress adds the Ingress for an ApiGateway
  */
-func createIngress(gw cwv1.ApiGateway, clientset *kubernetes.Clientset) *v1beta1.Ingress {
+func createIngress(gw v1alpha.ApiGateway, clientset *kubernetes.Clientset) *v1beta1.Ingress {
 
 	ingressName := gw.Name + "-ingress"
 
@@ -149,6 +146,7 @@ func createIngress(gw cwv1.ApiGateway, clientset *kubernetes.Clientset) *v1beta1
 
 	//TODO: Add Services
 	newIngress.Spec.Backend = &v1beta1.IngressBackend{ServiceName: gw.Spec.Backend.ServiceName, ServicePort: gw.Spec.Backend.ServicePort}
+
 	createdIngress, err := clientset.ExtensionsV1beta1().Ingresses("default").Create(&newIngress)
 
 	if err != nil {
@@ -173,13 +171,21 @@ func main() {
 		panic(err.Error())
 	}
 
-	// create the clientset
+	apigatewayClientset, err := cwclientset.NewForConfig(config)
+
+	//newApiGateway := v1alpha.ApiGateway{}
+	//newApiGateway.Name = "chrissisapigateway"
+	//newApiGateway.Spec.ServiceLabel = "chrississervicelabel"
+	//createdapiGateway, err := apigatewayClientset.ApiGateways("default").Create(&newApiGateway)
+	//fmt.Println("createdapiGateway: ", createdapiGateway)
+	//handleErr("error creating apigateway", err)
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(err.Error())
 	}
-	go handleApiGatewayEvents(clientset)
-	time.Sleep(3 * time.Second)
+	go handleApiGatewayEvents(clientset, apigatewayClientset)
+	time.Sleep(30 * time.Second)
+
 	go handleServiceEvents(clientset)
 
 	time.Sleep(3600 * time.Second)
@@ -224,42 +230,37 @@ func handleServiceEvents(clientset *kubernetes.Clientset) {
 	}
 }
 
-func handleApiGatewayEvents(clientset *kubernetes.Clientset) {
-
+func handleApiGatewayEvents(clientset *kubernetes.Clientset, apigatewayClientSet *cwclientset.CwV1alphaClient) {
 	for {
-		resp, err := http.Get("http://localhost:8001/apis/cw.com/v1/apigateways?watch=true")
+		apigatewayWatcher, err := apigatewayClientSet.ApiGateways("default").Watch(metav1.ListOptions{})
 		if err != nil {
-			panic(err)
+
+			fmt.Println("%V", err)
+			fmt.Printf("%T\n", err)
+			fmt.Printf("%V", err.(*errors.StatusError).ErrStatus)
+			panic(err.Error())
 		}
-		handleApiGatewayEvent(resp, clientset)
-		resp.Body.Close()
+		//fmt.Printf("%T\n", serviceStreamWatcher)
+		for {
+			select {
+			case event := <-apigatewayWatcher.ResultChan():
+				apigateway := event.Object.(*v1alpha.ApiGateway)
+
+				switch event.Type {
+				case "ADDED":
+					apigateways.AddGateway(apigateway, clientset)
+				case "DELETED":
+					apigateways.DeleteGateway(apigateway, clientset)
+				case "MODIFIED":
+					apigateways.ModifyGateway(apigateway, clientset)
+				default:
+					fmt.Println("UNEXPECTED event.Type in handleServiceEvents")
+				}
+			}
+
+		}
 	}
-}
 
-func handleApiGatewayEvent(resp *http.Response, clientset *kubernetes.Clientset) {
-	decoder := json.NewDecoder(resp.Body)
-	for {
-		var event cwv1.ApiGatewayWatchEvent
-		if err := decoder.Decode(&event); err == io.EOF {
-			//fmt.Println("handleNewApiGateways EOF")
-			break
-		} else if err != nil {
-			log.Fatal(err)
-		}
-		//log.Printf("Received watch event: %s: %s: \n", event.Type, event.Object.Metadata.Name)
-
-		switch event.Type {
-		case "ADDED":
-			apigateways.AddGateway(event.Object, clientset)
-		case "DELETED":
-			apigateways.DeleteGateway(event.Object, clientset)
-		case "MODIFIED":
-			apigateways.ModifyGateway(event.Object, clientset)
-		default:
-			fmt.Println("UNEXPECTED event.Type in handleApiGatewayEvent")
-		}
-
-	}
 }
 
 func handleErr(text string, err error) {
