@@ -4,13 +4,8 @@ metadata:
   name: christians-apigateway2
 spec:
   serviceLabel: labelOfServicesThatHAveTobeAddedToIngress
+  host: cw.de
   backend:
     serviceName: lumpensammler
     servicePort: 8080
-  rules:
-  - http:
-      paths:
-      - path: /ausschluss
-        backend:
-          serviceName: ausschluss-service
-          servicePort: 10001
+
