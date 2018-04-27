@@ -11,7 +11,7 @@ import (
 	"log"
 	"net/http"
 
-	cwv1 "github.com/christianwoehrle/apigateway-operator/pkg/v1"
+	cwv1 "github.com/christianwoehrle/apigateway-operator/pkg/apis/apigateway/v1"
 
 	"time"
 
@@ -50,7 +50,7 @@ func (*ApiGateways) AddGateway(gw cwv1.ApiGateway, clientset *kubernetes.Clients
 		apigatewayCRD: gw,
 	}
 
-	apigateways.apigateways[gw.Metadata.Name] = &apiGateway
+	apigateways.apigateways[gw.Name] = &apiGateway
 
 	ingress := createIngress(gw, clientset)
 	if ingress != nil {
@@ -132,7 +132,7 @@ func (*ApiGateways) ModifyService(service *v1.Service, clientset *kubernetes.Cli
  */
 func createIngress(gw cwv1.ApiGateway, clientset *kubernetes.Clientset) *v1beta1.Ingress {
 
-	ingressName := gw.Metadata.Name + "-ingress"
+	ingressName := gw.Name + "-ingress"
 
 	// Check if INgress already exists
 	ingress, err := clientset.ExtensionsV1beta1().Ingresses("default").Get(ingressName, metav1.GetOptions{})
