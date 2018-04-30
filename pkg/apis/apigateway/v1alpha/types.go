@@ -12,6 +12,7 @@ type Backend struct {
 
 type ApiGatewaySpec struct {
 	ServiceLabel string `json:"serviceLabel"`
+	IngressName  string
 	Host         string
 	Backend      Backend
 }
